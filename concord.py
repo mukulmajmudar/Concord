@@ -105,6 +105,11 @@ def sync(command, group, checkOnly, verbose):
 
     options = defaultOptions[:]
 
+    # Exclude as specified in config file
+    if 'exclude' in config:
+        for ex in config['exclude']:
+            options.append('exclude="' + ex + '"')
+
     # Include source directories
     added = set()
     for sourceDir in sourceDirs:
@@ -118,11 +123,6 @@ def sync(command, group, checkOnly, verbose):
 
         # Include recursively in
         options.append('include="{}/**"'.format(sourceDir))
-
-    # Exclude as specified in config file
-    if 'exclude' in config:
-        for ex in config['exclude']:
-            options.append('exclude="' + ex + '"')
 
     # Excluding everything else
     options.append('exclude="*"')
