@@ -39,13 +39,13 @@ def loadConfig(startingDir):
                 'is missing')
     if not config['remote'].endswith('/'):
         config['remote'] += '/'
-    for d in reversed(dirStack):
-        config['remote'] += d + '/'
+    #for d in reversed(dirStack):
+    #    config['remote'] += d + '/'
 
-    for backupDir in ['remote-backup-dir', 'local-backup-dir']:
-        if backupDir in config:
-            for d in reversed(dirStack):
-                config[backupDir] += d + '/'
+    #for backupDir in ['remote-backup-dir', 'local-backup-dir']:
+    #    if backupDir in config:
+    #        for d in reversed(dirStack):
+    #            config[backupDir] += d + '/'
 
 
     # Restore original working directory
@@ -115,6 +115,9 @@ def sync(command, group, checkOnly, verbose):
             if d not in added:
                 options.append('include="{}"'.format(d))
                 added.add(d)
+
+        # Include recursively in
+        options.append('include="{}/**"'.format(sourceDir))
 
     # Exclude as specified in config file
     if 'exclude' in config:
