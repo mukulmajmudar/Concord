@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 import os
 import subprocess
 import sys
@@ -53,15 +53,12 @@ def loadConfig(startingDir):
 
     return config
 
-defaultShortOptions = \
-[
-    'a',
-    'v',
-    'z'
-]
 
-defaultLongOptions = \
+defaultOptions = \
 [
+    'archive',
+    'verbose',
+    'compress',
     'progress',
     'delete-after',
     'update',
@@ -72,25 +69,92 @@ defaultLongOptions = \
 
 def askYesOrNoQuestion(question):
     try:
-        cfm = raw_input(question + ' (y/n): ')
+        cfm = input(question + ' (y/n): ')
         while cfm != 'y' and cfm != 'n':
-            cfm = raw_input('Please type y or n: ')
+            cfm = input('Please type y or n: ')
         return cfm
     except KeyboardInterrupt:
         sys.stdout.write('\n')
         raise
 
+def sync(command, group, checkOnly, verbose):
+    # Read remote from config file
+    config = loadConfig(os.getcwd())
+
+    if group and 'group' not in config:
+        sys.stderr.write('No group defined in config file.\n')
+        return
+    
+    # Assemble a list of source directories to sync
+    sourceDirs = []
+    if group:
+        os.chdir(config['configDir'])
+        startingDir = os.getcwd()
+        for member in config['group']:
+            if not os.path.exists(member):
+                os.makedirs(member)
+            sourceDirs.append(member)
+    else:
+        member = os.getcwd()
+        os.chdir(config['configDir'])
+        sourceDirs.append(member[len(config['configDir']) + 1:])
+
+    #
+    # Assemble options
+    #
+
+    options = defaultOptions[:]
+
+    # Include source directories
+    added = set()
+    for sourceDir in sourceDirs:
+        # Include all intermediate directories
+        parts = sourceDir.split('/')
+        for i in range(len(parts)):
+            d = '/'.join(parts[:i+1])
+            if d not in added:
+                options.append('include="{}"'.format(d))
+                added.add(d)
+
+    # Exclude as specified in config file
+    if 'exclude' in config:
+        for ex in config['exclude']:
+            options.append('exclude="' + ex + '"')
+
+    # Excluding everything else
+    options.append('exclude="*"')
+
+    # Specify backup directory if configured
+    if command == 'pull' and 'local-backup-dir' in config:
+        options += ['backup', 'backup-dir=' + config['local-backup-dir']]
+    if command == 'push' and 'remote-backup-dir' in config:
+        options += ['backup', 'backup-dir=' + config['remote-backup-dir']]
+    options = ['--' + opt for opt in options]
+
+    cmd = 'rsync {} '.format(' '.join(options))
+
+    anythingToSync = doSync(config, command, cmd, True, verbose)
+    if not anythingToSync:
+        print('Already up to date.')
+    elif not checkOnly:
+        confirm = askYesOrNoQuestion('This was a dry-run. Are you sure you ' +
+            'want to perform this ' + command + '?')
+        if confirm == 'y':
+            doSync(config, command, cmd, False, verbose) 
+
+
 def doSync(config, command, cmd, dryRun, verbose):
     if dryRun:
         cmd += '--dry-run '
     if command == 'push':
-        cmd += os.getcwd() + '/ ' + config['remote']
+        cmd += '{}/ {}'.format(config['configDir'], config['remote'])
     elif command == 'pull':
-        cmd += config['remote'] + ' ' + os.getcwd() + '/'
+        cmd += '{} {}/'.format(config['remote'], os.getcwd())
     if verbose:
-        print cmd
+        print(cmd)
     output = subprocess.check_output(cmd, shell=True,
             stderr=subprocess.STDOUT)
+    output = output.decode('utf-8')
     p = output.find('files to consider')
     output = output[p + len('files to consider'):]
     combos = [
@@ -104,66 +168,20 @@ def doSync(config, command, cmd, dryRun, verbose):
     if all([output.find(combo) == -1 for combo in combos]):
         return False
     else:
-        print output
+        print(output)
         return True
 
 
-def sync(command, group, verbose):
-    # Read remote from config file
-    config = loadConfig(os.getcwd())
-
-    if group and 'group' not in config:
-        sys.stderr.write('No group defined in config file.\n')
-        return
-
-    if group:
-        os.chdir(config['configDir'])
-        startingDir = os.getcwd()
-        # Recurse for each group member
-        for member in config['group']:
-            print('-- ' + command + ' for ' + member + '...')
-            if not os.path.exists(member):
-                os.makedirs(member)
-            os.chdir(member)
-            sync(command, False, verbose)
-            os.chdir(startingDir)
-        return
-
-    longOptions = defaultLongOptions[:]
-    if 'exclude' in config:
-        for ex in config['exclude']:
-            longOptions.append('exclude="' + ex + '"')
-
-    if command == 'pull' and 'local-backup-dir' in config:
-        longOptions += ['backup', 'backup-dir=' + config['local-backup-dir']]
-    if command == 'push' and 'remote-backup-dir' in config:
-        longOptions += ['backup', 'backup-dir=' + config['remote-backup-dir']]
-
-    longOptions = ['--' + opt for opt in longOptions]
-    shortOptions = ['-' + opt for opt in defaultShortOptions]
-
-    cmd = 'rsync ' + ' '.join(shortOptions) + ' ' + ' '.join(longOptions) + ' '
-
-    anythingToSync = doSync(config, command, cmd, True, verbose)
-    if not anythingToSync:
-        print('Already up to date.')
-    else:
-        confirm = askYesOrNoQuestion('This was a dry-run. Are you sure you ' +
-            'want to perform this ' + command + '?')
-        if confirm == 'y':
-            doSync(config, command, cmd, False, verbose)
-
-
-def push(group=False, verbose=False):
+def push(group=False, checkOnly=False, verbose=False):
     try:
-        sync('push', group, verbose)
+        sync('push', group, checkOnly, verbose)
     except KeyboardInterrupt:
         pass
 
 
-def pull(group=False, verbose=False):
+def pull(group=False, checkOnly=False, verbose=False):
     try:
-        sync('pull', group, verbose)
+        sync('pull', group, checkOnly, verbose)
     except KeyboardInterrupt:
         pass
 
