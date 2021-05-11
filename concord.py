@@ -63,7 +63,8 @@ defaultOptions = \
     'delete-after',
     'update',
     'itemize-changes',
-    'human-readable'
+    'human-readable',
+    'no-perms'
 ]
 
 
